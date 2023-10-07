@@ -1,0 +1,1 @@
+hexmate r0-3FFF,../../../bootec485.X/dist/default/production/bootec485.X.production.hex r4000-14FFF,../../dist/default/production/brake.X.production.hex r15000-FFFFFFFF,../../../bootec485.X/dist/default/production/bootec485.X.production.hex -O../../dist/default/production/combined.production.hex
