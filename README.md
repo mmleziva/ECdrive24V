@@ -10,3 +10,4 @@ BRAKE: BLDC motor drive of 12kN brake.
   Sericom.c : Uart for modbus.    
 BOOTLOAD: Optional uart bootloader  
 WINBRAKE: Windows monitor program, communicates by modbus.
+More at https://emar.cz
