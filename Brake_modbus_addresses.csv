@@ -3,7 +3,7 @@
 Address         Function                                   Note:              A40000...40016                         
 HOLDING         REGISTERS 16bit    Fce3:Read from;         Fce16: Write to.   A40000...40015 are saved to EPROM      
       40000     Spacing[mm]*RD                                                
-          1     Force moment[Nm]*RM                        RM=16              
+          1     Force [kN]*RM                              RM=16              
           2     Bit flags                                  0:Grease enable,   1:Testing                              
           3     ForceTime[s]                                                  
           4     NoForceTime[s]                                                
