@@ -108,6 +108,6 @@ extern errors err;
 //void  IC3_CallBack(void);
 void  ForceCommutation(void);
 void pwmvolt(int permilleratio);
-bool grow(int16_t *ptvelo, int16_t endvelo,int16_t updown);
+bool ramp(int16_t *ptvelo, int16_t endvelo,int16_t updown);
 #endif	/* ECMOTOR */
 

@@ -14,15 +14,14 @@
 uint16_t start,clamp,released, curax, curcomp,nforces,milisec;
 float voltage, voltmotor,curmotor, delta;
 const float resmotor= 0.3;
-//unil dt,dto,cycax;
 unil dto,cycax;
-adcfilter curr,trim,volt;
+adcfilter curr,trim,volt, currslow;
 uint16_t ocp,timgled,shinegled=2,darkgled=600,j,reduce;
-int16_t current,curmes, startcyco, startmem,starcomp,compar;
+int16_t current,currentslow, curmes, startcyco, startmem,starcomp,compar;
 uint32_t ms, greasetime;
 uint32_t flash_addr, flash_addr2,k24;
-bool FINCYC;
-int16_t vel,slopevel,endvel; 
+bool FINCYC,FLREG;
+int16_t vel,slopevel,endvel,forvel,difvel; 
  // sets pointers to  holding registers of Modbus
  int16_t *const ptspace= (int16_t *)&HOLDREGSR[0].W;
  uint16_t *const ptforat =(uint16_t *)&HOLDREGSR[1].W;
@@ -33,8 +32,18 @@ int16_t vel,slopevel,endvel;
  uint16_t *const  ptgrease= (uint16_t *)&HOLDREGSR[6].W;
  int16_t * const ptgredist=(int16_t *)&HOLDREGSR[7].W;
  int16_t * const ptcureal=(int16_t *)&HOLDREGSR[8].W;
- int32_t * const ptcycles=(int32_t *)&HOLDREGSR[10].W;
- uint32_t * const ptcycgrease=(uint32_t *)&HOLDREGSR[12].W;
+ int32_t * const ptcycles=(int32_t *)&HOLDREGSR[9].W;
+ uint32_t * const ptcycgrease=(uint32_t *)&HOLDREGSR[11].W;
+ 
+ int16_t ReduceForce(uint16_t value, uint16_t redu)
+ {
+     int16_t retval;
+     if(redu != 0)//no necessary         
+        retval = ((-redu) & 0x0f)*(value>>4);// endvel = (0x10- (reduce & 0x0f))*(auxvolt>>4);
+     else 
+        retval= value;             //increase of current after impact
+     return retval;
+ }
 
 void setReady(void)
 {
@@ -71,10 +80,9 @@ void setInto(void)
                     ms=0;
                     state= INTO;
                     ec.SlowToBrake= false;
-//                    pwmvolt(1000);//maximum velocity MDC=0.94*PTPER 
                     vel= 200;
-                    endvel=1000;
-                    slopevel= 20;
+                    endvel=1000;        //                    pwmvolt(1000);//maximum velocity MDC=0.94*PTPER 
+                    slopevel= 20;   //set ramp
                     IC4CON1bits.ICM=0;//set capture zero
                     IC3CON1bits.ICM=0;
                     TMR3HLD=0;
@@ -83,12 +91,8 @@ void setInto(void)
                     IC3CON1bits.ICM=1;
                     startmem= startcycles;
                     starcomp= startcycles; 
-                    if(reduce != 0)//no necessary
-                       // compar= (0x10- (reduce & 0x0f))*(*ptcureal>>4);
-                        compar= ((-reduce) & 0x0f)*(*ptcureal>>4);//t
-                    else
-                        compar= *ptcureal;
-                    ocp= OCPSET;
+                    compar = ReduceForce(*ptcureal, reduce);                 
+                    ocp= OCPSET;        //blocked motor stop by overcurrent for ocp ms
                     ec.Run= true;
                     ForceCommutation();
                   
@@ -107,7 +111,7 @@ void setGrease(void)
               // pwmvolt(-1000);//maximum velocity MDC=0.94*PTPER 
                vel= -200;
                endvel=-1000;
-               slopevel= -6;
+               slopevel= 6;//-6;
                ec.Run= true;
                ForceCommutation();
 }
@@ -129,21 +133,10 @@ void setRetgrea(void)
 
 void setHold(void)
 {
-    uint16_t auxvolt;
-  ec.SlowToBrake= false;
-  if(volt.filter > 0x4000)
-    auxvolt= (uint16_t)(((-volt.filter) *(uint32_t)(*ptforat))>>15) ;
- // auxvolt=(uint16_t)((((uint32_t)(*ptforat))<<15)/volt.filter);
-  else auxvolt= *ptforat;
-  if(reduce != 0)//no necessary
-     
-     
-    endvel = ((-reduce) & 0x0f)*(auxvolt>>4);// endvel = (0x10- (reduce & 0x0f))*(auxvolt>>4);
-  else 
-  //    endvel= *ptforat;             //increase of current after impact
-   endvel= auxvolt;             //increase of current after impact
-
-  slopevel= -6;
+   ec.SlowToBrake= false;
+   forvel= ReduceForce(*ptforat, reduce);
+  endvel= forvel;//final force
+  slopevel= 6;//-6;
   ms=0;
   state= HOLD; 
   clamp=0;
@@ -203,6 +196,13 @@ void writrev(unil trev)  //write revolving time into modbus registers
       INP[3] = trev.h;
 }
 
+ void correction()//P current regulator
+{
+    difvel= forvel- (((currentslow>>6)*50)>>6);
+    endvel+= (difvel>>1); //t
+            
+}
+
 void __attribute__ ((weak)) TMR1_CallBack(void)//1ms tick
 {
     if(start>0)     //delay after starting the program
@@ -229,10 +229,11 @@ void __attribute__ ((weak)) TMR1_CallBack(void)//1ms tick
     }
     buttonfilt();
             //switch button filtering
-   
+   if((milisec & 0x3f)==0)  //64ms 
+       FLREG=true;
    milisec++;
-   milisec &= 0x3ff;
-   if(milisec==0)//1s
+   milisec &= 0x3ff;//=1024ms
+   if(milisec==0)//~1s
    {
      if(state==HOLD)
      {
@@ -318,7 +319,8 @@ void __attribute__ ((weak)) TMR1_CallBack(void)//1ms tick
        ms=0;
        INP[1] = startcycles;//write distance to Modbus input register
    }
-   grow(&vel, endvel,slopevel);//t
+   ramp(&vel, endvel,slopevel);//on slopes(pointer to actual value, final value, absolute slope)
+     pwmvolt(vel);              //set ratio of pwm output; max. ratio is +/- 1000 of 1024  
    startcyco= startcycles;
    cycax.il= *ptcycles;
    INPREGS[0].W= cycax.l;
@@ -344,11 +346,13 @@ inline void compcurrent(void)//compare current
 void __attribute__ ((weak)) ADC1_CallBack(void)
 {
        volt.adc =  ADC1BUF1;
-   // trim.adc =  ADC1BUF0;
+    trim.adc =  ADC1BUF0;
     curr.adc =  ADC1BUF3;
+    currslow.adc =  ADC1BUF3;
     Filt(&curr);
     Filt(&trim);
     Filt(&volt);
+    Filt(&currslow);
     if(volt.filter < VMIN)
         err.WeakPower= true;
     if(volt.filter < VABSMIN)
@@ -356,22 +360,23 @@ void __attribute__ ((weak)) ADC1_CallBack(void)
     switch(state)
     {
         case  VOLTON:   
-         curcomp=curr.filter;// current compensation
+            curcomp=currslow.filter;// current compensation
          break;
         case  READY:   
-         pwmvolt(0);
-         curcomp=curr.filter;// current compensation
+         curcomp=currslow.filter;// current compensation
+ /*        
          if(FINCYC)//flag of finish of cycle
          {
              FINCYC=false;
              (*ptcycles)++;
               writeflashDW(flash_addr2,*ptcycles,*ptcycgrease);
          }
-         
+ */      
          break;
         case  RELEASE:   
-         pwmvolt(0);
-         curcomp=curr.filter;// current compensation
+ //        pwmvolt(0);
+   //      curcomp=curr.filter;// current compensation
+             curcomp=currslow.filter;// current compensation
          break;
         case  HOLD:   
           break;
@@ -388,6 +393,7 @@ void __attribute__ ((weak)) ADC1_CallBack(void)
          break;
     }
     current= curr.filter-curcomp;
+    currentslow= currslow.filter-curcomp;
     compcurrent();
     INP[0] = (current >> 6);// writes parameters to  input registers
     INP[4] = (volt.filter >> 6);
@@ -415,6 +421,7 @@ inline void iniControl(void)// initialization at program start
   curr.kfil=0x1000;//0.0625
   trim.kfil=0x800; //0.03125
   volt.kfil=0x100; //0.0039
+  currslow.kfil=0x100; //0.0039
   CVR2CONbits.CVR = CURRMAX + 0x40;//t     //current comparator limit
   greasetime= GRESEC;
   err.WatchDog= ((RCON & 0b1100001001010000)!= 0);
@@ -504,6 +511,12 @@ inline void Control(void)
             {
                 setRelease();               
             }
+            else 
+            if (FLREG)
+            {
+                FLREG=false;
+                correction();
+            }
           break;
           case RELEASE:
             if(released > *ptsecnofo)
@@ -537,8 +550,13 @@ inline void Control(void)
             }
             if((ptsets->GREASENA) && ((greasetime==0)||(nforces >= *ptgrease)) && (dt.hl > 0xfffff))
             {
-                setGrease();
-              
+                setGrease();             
+            }
+            if(FINCYC)//flag of finish of cycle
+            {
+             FINCYC=false;
+             (*ptcycles)++;
+              writeflashDW(flash_addr2,*ptcycles,*ptcycgrease);
             }
           break;
           case GREASE:                          
@@ -575,10 +593,3 @@ inline void Control(void)
       } 
 }
 
-uint16_t calcduty()
-{
-    uint16_t t;
-    delta= curmotor* resmotor/ voltage;
-    t= (uint16_t)((1 - 2*delta)/(1 + 2*delta)* T);
-    return t;
-}
