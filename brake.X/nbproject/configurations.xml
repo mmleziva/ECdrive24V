@@ -48,6 +48,19 @@
       <itemPath>sericom.h</itemPath>
       <itemPath>variousfcs.h</itemPath>
     </logicalFolder>
+    <logicalFolder name="ExternalFiles"
+                   displayName="Important Files"
+                   projectFiles="true">
+      <logicalFolder name="MCC Generated Files"
+                     displayName="MCC Generated Files"
+                     projectFiles="true">
+        <logicalFolder name="boot" displayName="boot" projectFiles="true">
+          <itemPath>mcc_generated_files/boot/combineAppAndBootloaderHex.bat</itemPath>
+        </logicalFolder>
+      </logicalFolder>
+      <itemPath>Makefile</itemPath>
+      <itemPath>brake.mc3</itemPath>
+    </logicalFolder>
     <logicalFolder name="LinkerScript"
                    displayName="Linker Files"
                    projectFiles="true">
@@ -100,19 +113,6 @@
       <itemPath>sericom.c</itemPath>
       <itemPath>variousfcs.c</itemPath>
     </logicalFolder>
-    <logicalFolder name="ExternalFiles"
-                   displayName="Important Files"
-                   projectFiles="false">
-      <logicalFolder name="MCC Generated Files"
-                     displayName="MCC Generated Files"
-                     projectFiles="true">
-        <logicalFolder name="boot" displayName="boot" projectFiles="true">
-          <itemPath>mcc_generated_files/boot/combineAppAndBootloaderHex.bat</itemPath>
-        </logicalFolder>
-      </logicalFolder>
-      <itemPath>Makefile</itemPath>
-      <itemPath>brake.mc3</itemPath>
-    </logicalFolder>
   </logicalFolder>
   <projectmakefile>Makefile</projectmakefile>
   <confs>
@@ -124,7 +124,7 @@
         <targetPluginBoard></targetPluginBoard>
         <platformTool>snap</platformTool>
         <languageToolchain>XC16</languageToolchain>
-        <languageToolchainVersion>2.00</languageToolchainVersion>
+        <languageToolchainVersion>2.10</languageToolchainVersion>
         <platform>3</platform>
       </toolsSet>
       <packs>
@@ -525,7 +525,7 @@
         <targetPluginBoard></targetPluginBoard>
         <platformTool>snap</platformTool>
         <languageToolchain>XC16</languageToolchain>
-        <languageToolchainVersion>2.00</languageToolchainVersion>
+        <languageToolchainVersion>2.10</languageToolchainVersion>
         <platform>3</platform>
       </toolsSet>
       <packs>
