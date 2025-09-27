@@ -71,7 +71,10 @@ typedef struct
    uint16_t ComutPh3:1;
    uint16_t SlowToBrake:1;
    uint16_t Run:1;
-   uint16_t INV;
+   uint16_t INV:1;
+   uint16_t Left:1;
+   uint16_t Quick:1;
+   uint16_t Tcapt:1;
 } motorbits;
 
 typedef union
@@ -107,7 +110,10 @@ extern errors err;
 //void  IC2_CallBack(void);
 //void  IC3_CallBack(void);
 void  ForceCommutation(void);
+void IC1nucleo(void);
+void IC2nucleo(void);
+void IC3nucleo(void);
 void pwmvolt(int permilleratio);
-bool ramp(int16_t *ptvelo, int16_t endvelo,int16_t updown);
+int ramp(int16_t velo, int16_t endvelo,int16_t updown);
 #endif	/* ECMOTOR */
 

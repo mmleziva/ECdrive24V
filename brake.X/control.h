@@ -16,14 +16,14 @@
 #define HOLD 3
 #define RELEASE 4
 #define AWAY 5
-#define GREASE 6
-#define RETGREA 7
-#define MAXCYC 600    
+//#define GREASE 6
+//#define RETGREA 7
+#define MAXCYC 1057//940 
 #define FORCERATIO 190   //holding PWM ratio  12kN
-#define SETSVOLA 4
+#define SETSVOLA 0//4
 #define HOLDTIME 3      //braking time
 #define RETIME 10000      //braking pause
-#define MAXCLOSE 1000
+#define MAXCLOSE 1880//1000
 #define GRESEC 30000 //s 
 #define GREASEREVS 900
 #define CURRMAX 0x38    //22A peak current/ comparator limit Im=(CURRMAx)/2.56
@@ -36,6 +36,7 @@
 #include "modbus.h"
 #include <math.h>
 #include "variousfcs.h"
+#include "ecmotor.h"//t
 
     
  typedef struct 
@@ -43,6 +44,7 @@
  uint16_t   GREASENA:1; //grease enable
  uint16_t   AUTOTEST:1; //brake autotest enable
  uint16_t   NEGHALL:1; //inverted hall sensors
+ uint16_t   LEFT:1; //inverted hall sensors
 } sets;
 
 

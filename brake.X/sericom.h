@@ -9,7 +9,7 @@
 
 #define BUFOUTMAX 138
 #define BUFINMAX 64
-//#define DE _RA0 
+#define DE _RA0 
 //#include <stdio.h>
 //#include <xc.h> // include processor files - each processor file is guarded. 
 #include <stdbool.h>
@@ -39,6 +39,8 @@ extern char rxData,rstring[BUFINMAX+1];
 extern short int irx,nstr;
 extern unsigned char  *pbufo;
 void serini();
+extern uint16_t   timwuart;
+void restartuart();
 
 //#include "config/basic/definitions.h"
 #endif /* _SERICOM_H */

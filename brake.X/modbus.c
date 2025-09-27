@@ -225,13 +225,7 @@ void mbsw() //modbus slave write
   if(mbu.Uart1)   
   {
     startU1tr(N);//start transmit of this card data to UART1->USB 
-    /*
-    IFS1bits.U1TXIF= false;
-    FURT=DMAC_ChannelTransfer(DMAC_CHANNEL_0, (const void *)pbufo, N*2  , (const void *)&U1TXREG, 1, 1); //Harmony pherif.func.        
-    DCH0ECONbits.CFORCE = true;//transfer init manually 
-    LED4_Set();
-    WDTCONbits.WDTCLRKEY=0x5743;
-    */
+    
   }
 #endif
   #ifdef MBUART2
@@ -253,10 +247,15 @@ void modrec(void)
             {
              interf();
              mbsw();
-//             mwend();
             }
         }
     
+    }
+    else 
+    if (timwuart> 10000)//after 10 s uart disused
+    {
+        //timwuart=0;  in DMA_Channel0_CallBack()
+        restartuart();
     }
 }
 

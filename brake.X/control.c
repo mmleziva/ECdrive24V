@@ -6,6 +6,9 @@
 #define NSTART 10
 #define VMIN 0x6e00
 #define VABSMIN 0x6800
+#define BOOTLOADER_FLAG_ADDRESS 0x17fe //t Musí být shodné s aplikací
+
+volatile unsigned int __attribute__((address(BOOTLOADER_FLAG_ADDRESS),persistent)) bootloader_flag;//t
 
 // Allocate and reserve a page of flash for this test to use.  The compiler/linker will reserve this for data and not place any code here.
  __prog__  uint16_t flashPage[(FLASH_ERASE_PAGE_SIZE_IN_PC_UNITS/2)] __attribute__((space(prog),aligned(FLASH_ERASE_PAGE_SIZE_IN_PC_UNITS)))\
@@ -18,7 +21,7 @@ unil dto,cycax;
 adcfilter curr,trim,volt, currslow;
 uint16_t ocp,timgled,shinegled=2,darkgled=600,j,reduce;
 int16_t current,currentslow, curmes, startcyco, startmem,starcomp,compar;
-uint32_t ms, greasetime;
+uint32_t ms;
 uint32_t flash_addr, flash_addr2,k24;
 bool FINCYC,FLREG;
 int16_t vel,slopevel,endvel,forvel,difvel; 
@@ -29,12 +32,9 @@ int16_t vel,slopevel,endvel,forvel,difvel;
  uint16_t *const ptsecforce=(uint16_t *)&HOLDREGSR[3].W;
  uint16_t * const ptsecnofo=(uint16_t *)&HOLDREGSR[4].W;
  int16_t * const ptclose= (int16_t *)&HOLDREGSR[5].W;
- uint16_t *const  ptgrease= (uint16_t *)&HOLDREGSR[6].W;
- int16_t * const ptgredist=(int16_t *)&HOLDREGSR[7].W;
- int16_t * const ptcureal=(int16_t *)&HOLDREGSR[8].W;
+  int16_t * const ptcureal=(int16_t *)&HOLDREGSR[8].W;
  int32_t * const ptcycles=(int32_t *)&HOLDREGSR[9].W;
- uint32_t * const ptcycgrease=(uint32_t *)&HOLDREGSR[11].W;
- 
+  
  int16_t ReduceForce(uint16_t value, uint16_t redu)
  {
      int16_t retval;
@@ -98,38 +98,6 @@ void setInto(void)
                   
 }
 
-void setGrease(void)
-{
-               greasetime= GRESEC;  
-               nforces=0;
-               startmem= startcycles;
-               starcomp= startcycles; 
-               ec.Required_Direction=CCW;
-               ocp= OCPBACK;
-               ms=0;
-               state= GREASE;
-              // pwmvolt(-1000);//maximum velocity MDC=0.94*PTPER 
-               vel= -200;
-               endvel=-1000;
-               slopevel= 6;//-6;
-               ec.Run= true;
-               ForceCommutation();
-}
-
-void setRetgrea(void)
-{
-      ec.SlowToBrake= false;
-      ms=0;
-      state= RETGREA;
-      vel= 200;
-      endvel=1000;//maximum velocity MDC=0.94*PTPER 
-      slopevel= 6;
-      starcomp= startcycles; 
-      ec.Required_Direction=CW;
-      ocp= OCPSET;
-      ec.Run= true;
-      ForceCommutation();
-}
 
 void setHold(void)
 {
@@ -140,6 +108,8 @@ void setHold(void)
   ms=0;
   state= HOLD; 
   clamp=0;
+  ec.Run= true; //t
+  ForceCommutation();   //t
 }
 
 void setRelease(void)
@@ -166,7 +136,7 @@ inline void interf()//program link between reading and writing the modbus protoc
         if(k24 & 0x00800000)
             k24 |=0xff000000;
         if(*ptcycles != (int32_t) k24)
-           writeflashDW(flash_addr2,*ptcycles,*ptcycgrease);
+           writeflashDW(flash_addr2,*ptcycles,0);
         else 
             if(mbs.startAdr.W==ADR0HOLDREG+0x10)        
             {
@@ -174,8 +144,11 @@ inline void interf()//program link between reading and writing the modbus protoc
             }     
         else
         {
+           bootloader_flag = HOLDREGSR[11].W;   //t
+           HOLDREGSR[11].W=0;                   //t
            writeflash(flash_addr,(uint16_t *)(&(HOLDREGSR[0].W)));
            ec.INV= ptsets->NEGHALL;
+           ec.Left= ptsets->LEFT;
         }
         break;
         case 4: 
@@ -227,6 +200,7 @@ void __attribute__ ((weak)) TMR1_CallBack(void)//1ms tick
           GRE= DARK;            
         }
     }
+    timwuart++;
     buttonfilt();
             //switch button filtering
    if((milisec & 0x3f)==0)  //64ms 
@@ -263,8 +237,25 @@ void __attribute__ ((weak)) TMR1_CallBack(void)//1ms tick
          else
              released=0;
      }
-     if(greasetime != 0)greasetime--;
    }
+
+   if(dt.hl < 400000)
+   {
+       _IC1IE= true;
+       _IC2IE= true;
+       _IC3IE= true;
+   }
+   else if(dt.hl > 600000)
+   {
+       _IC1IE= false;
+       _IC2IE= false;
+       _IC3IE= false;
+       ForceCommutation();
+       IC1nucleo();
+       IC2nucleo();
+       IC3nucleo();
+   }
+
    if(ec.ComutPh1)
    {
     ec.ComutPh1= false;
@@ -300,7 +291,7 @@ void __attribute__ ((weak)) TMR1_CallBack(void)//1ms tick
    if(startcyco== startcycles)//no motor revolution
    { if(ms>=100)  
      {
-        if((state== INTO)||(state== AWAY)||(state== GREASE)||(state== RETGREA))
+        if((state== INTO)||(state== AWAY))
           err.Winding= true;
      }
      if(ms == 100) 
@@ -319,7 +310,7 @@ void __attribute__ ((weak)) TMR1_CallBack(void)//1ms tick
        ms=0;
        INP[1] = startcycles;//write distance to Modbus input register
    }
-   ramp(&vel, endvel,slopevel);//on slopes(pointer to actual value, final value, absolute slope)
+   vel=ramp(vel, endvel,slopevel);//on slopes(pointer to actual value, final value, absolute slope)
      pwmvolt(vel);              //set ratio of pwm output; max. ratio is +/- 1000 of 1024  
    startcyco= startcycles;
    cycax.il= *ptcycles;
@@ -329,8 +320,7 @@ void __attribute__ ((weak)) TMR1_CallBack(void)//1ms tick
 }
 
 inline void compcurrent(void)//compare current
-{
-  //if(((current>>6) > *ptcureal)&&(ocp == 0))    
+{    
     if(((current>>6) > compar)&&(ocp == 0))  
     {
        {
@@ -363,31 +353,17 @@ void __attribute__ ((weak)) ADC1_CallBack(void)
             curcomp=currslow.filter;// current compensation
          break;
         case  READY:   
-         curcomp=currslow.filter;// current compensation
- /*        
-         if(FINCYC)//flag of finish of cycle
-         {
-             FINCYC=false;
-             (*ptcycles)++;
-              writeflashDW(flash_addr2,*ptcycles,*ptcycgrease);
-         }
- */      
+         curcomp=currslow.filter;// current compensation   
          break;
         case  RELEASE:   
- //        pwmvolt(0);
-   //      curcomp=curr.filter;// current compensation
              curcomp=currslow.filter;// current compensation
          break;
         case  HOLD:   
           break;
         case  INTO:   
           break;
-        case  RETGREA:   
-          break;
         case  AWAY:   
           break;
-        case  GREASE:   
-         break;
         default:
          pwmvolt(0);//stop
          break;
@@ -414,16 +390,16 @@ inline void iniControl(void)// initialization at program start
   {
       HOLDREGSR[jn].W = (int16_t) FLASH_ReadWord16(flash_addr+ jn*2U);
   }
+  //ptsets->NEGHALL=0;//t
   ec.INV= ptsets->NEGHALL;
+  ec.Left= ptsets->LEFT;
   *ptcycles= (int32_t) FLASH_ReadWord24(flash_addr2);
   if (*ptcycles & 0x00800000)*ptcycles |= 0xff000000;
-  *ptcycgrease= (uint32_t) FLASH_ReadWord24(flash_addr2+4U);
   curr.kfil=0x1000;//0.0625
   trim.kfil=0x800; //0.03125
   volt.kfil=0x100; //0.0039
   currslow.kfil=0x100; //0.0039
   CVR2CONbits.CVR = CURRMAX + 0x40;//t     //current comparator limit
-  greasetime= GRESEC;
   err.WatchDog= ((RCON & 0b1100001001010000)!= 0);
   RCONbits.WDTO= false;
   RCONbits.TRAPR= false;
@@ -431,11 +407,15 @@ inline void iniControl(void)// initialization at program start
   RCONbits.IOPUWR= false;
   //RCONbits.EXTR= false;
   RCONbits.CM= false;
+  dt.hl=0x7fffffff;
+  _IC1IE= false;//t
+  _IC2IE= false;
+  _IC3IE= false;
 }
 
 inline void Control(void)
 {
- if(state== VOLTON)
+      if(state== VOLTON)
       {
         if(start==0)//delay of ready state
         {
@@ -447,6 +427,7 @@ inline void Control(void)
       else if(controls.SWREAL)  //rise edge of switch
       {
         controls.SWREAL= false;
+  //      bootloader_flag = 0xA5A5;//t
         {
            if(!ptsets->AUTOTEST)
             switch(state)
@@ -457,13 +438,7 @@ inline void Control(void)
                  case AWAY:
                     setInto();
                  break;
-                 case GREASE:
-                    setInto();                    
-                  break;
-                  case RETGREA:
-                    setInto();                    
-                  break;
-                  default:
+                   default:
                     break;
             }
             
@@ -548,45 +523,14 @@ inline void Control(void)
             {
               ec.SlowToBrake= false;
             }
-            if((ptsets->GREASENA) && ((greasetime==0)||(nforces >= *ptgrease)) && (dt.hl > 0xfffff))
-            {
-                setGrease();             
-            }
             if(FINCYC)//flag of finish of cycle
             {
              FINCYC=false;
              (*ptcycles)++;
-              writeflashDW(flash_addr2,*ptcycles,*ptcycgrease);
+              writeflashDW(flash_addr2,*ptcycles,0);
             }
           break;
-          case GREASE:                          
-            if(((startcycles-startmem) < -*ptgredist)||ec.SlowToBrake)
-            {
-                   if(ec.Run)
-                   {
-                       ec.Run= false;
-                       if(ec.SlowToBrake)
-                           ForceCommutation();                           
-                   }
-                   else if(dt.hl > 0xfffff)
-                   {
-                       setRetgrea();
-                   }
-            }
-          break;
-          case RETGREA:    
-               if(ec.SlowToBrake)
-               {
-                   ec.SlowToBrake= false;
-                   setAway();
-               }
-               else if((startcycles-startmem) >= 0)
-               {
-                shinegled=900; 
-                darkgled=100;
-                setReady();  
-               }
-          break;     
+       
           default:
               ec.SlowToBrake= false;
           break;

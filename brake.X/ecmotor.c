@@ -51,6 +51,7 @@ unsigned int Hall(void)           //return switched hall sensors for motor 1
     }
     return h.i;
 }
+
 int state;
 
 // Constants used for properly energizing the motor depending on the 
@@ -80,10 +81,10 @@ int tic1,tic2,tic3,tax3,tay3;
 unil dt,t1,t2;
 int16_t startcycles;
 motorbits ec;
+void countcycles();
 
 void ForceCommutation(void)
 {
-  //  bit hs;
 	HallValue = Hall();
     if(Sector== (LastSector+1)%6)
         ec.Current_Direction= CW;
@@ -102,7 +103,8 @@ void ForceCommutation(void)
     else
     if(ec.Run)
     {	  
-        switch((Sector + ec.Required_Direction*3)%6)
+      //  switch((Sector + ec.Required_Direction*3)%6)
+        switch(Sector)
         {
             case 0:         //+-0
                 io1.OVREN=0;
@@ -191,73 +193,97 @@ void ForceCommutation(void)
         }      
         IOCON1= io1.i;
         IOCON2= io2.i;
-        IOCON3= io3.i; 
-   //     err.Halls=false;    
+        IOCON3= io3.i;     
 	}
     else        //stop
     {
         IOCON1= 0xC7A0;
         IOCON2= 0xC7A0;
         IOCON3= 0xC7A0; 
-   //     err.Halls=false;
     }
 	return ;
 }
 
+inline void countcycles()
+{
+    if(ec.Left == (ec.Current_Direction==CCW))
+        startcycles++;
+    else
+         startcycles--;  
+}
+
+ void __attribute__((always_inline)) IC1nucleo(void)
+{
+    if(IC1CON1bits.ICBNE)
+   {
+     do
+        tic1=IC1BUF;    
+     while(IC1CON1bits.ICBNE);
+     ec.ComutPh1= true;
+     countcycles();   
+   }
+}
 void __attribute__ ((weak)) IC1_CallBack(void)
 {
     
     // Add your custom callback code here
    ForceCommutation();
-   do
-    tic1=IC1BUF;    
-   while(IC1CON1bits.ICBNE);
-    ec.ComutPh1= true;
-    if(ec.Current_Direction==CW)
-             startcycles++;
-        else
-             startcycles--;                
+   IC1nucleo();
+   
+}
 
+ void __attribute__((always_inline)) IC2nucleo(void)
+{
+     // Add your custom callback code here
+   if(IC2CON1bits.ICBNE)
+   {
+     do
+        tic2=IC2BUF;    
+     while(IC2CON1bits.ICBNE);
+     ec.ComutPh2= true;
+     countcycles();   
+   }
 }
 
 void __attribute__ ((weak)) IC2_CallBack(void)
 {
-    // Add your custom callback code here
    ForceCommutation();
-   do
-        tic2=IC2BUF;    
-   while(IC2CON1bits.ICBNE);
-   ec.ComutPh2= true;
-   if(ec.Current_Direction==CW)
-             startcycles++;
-        else
-             startcycles--;                
+   IC2nucleo();
+}
 
+ void __attribute__((always_inline)) IC3nucleo(void)
+{
+    if(IC3CON1bits.ICBNE)
+       {
+           t1.hl= t2.hl; 
+           do
+                t2.l=IC3BUF;
+           while(IC3CON1bits.ICBNE);
+           do    
+                t2.h=IC4BUF;    
+           while(IC4CON1bits.ICBNE);         
+           ec.ComutPh3= true;
+           countcycles();   
+           if(ec.Tcapt)
+           {
+                dt.hl= t2.hl-t1.hl;//time between Hall sensor detections 
+                if(ec.Last_Direction == ec.Current_Direction)
+                {
+                 if(dt.hl < THMIN)
+                     err.Interfer= true;
+                 }      
+           }
+           else 
+               ec.Tcapt= true;
+           ec.Last_Direction=ec.Current_Direction;   
+       }
 }
 
 void __attribute__ ((weak)) IC3_CallBack(void)
 {
     // Add your custom callback code here
        ForceCommutation();
-       t1.hl= t2.hl;      
-       t2.l=IC3BUF;
-       while(IC3CON1bits.ICBNE)
-        tax3=IC3BUF;    
-       t2.h=IC4BUF;    
-       while(IC4CON1bits.ICBNE)
-        tay3=IC4BUF;         
-       ec.ComutPh3= true;
-       if(ec.Current_Direction==CW)
-             startcycles++;
-        else
-             startcycles--;    
-        dt.hl= t2.hl-t1.hl;//time between Hall sensor detections 
-        if(ec.Last_Direction == ec.Current_Direction)
-        {
-            if(dt.hl < THMIN)
-                err.Interfer= true;
-        }       
-        ec.Last_Direction=ec.Current_Direction;
+       IC3nucleo();
        
 }
 
@@ -268,37 +294,33 @@ void pwmvolt(int permilleratio)     //set ratio of pwm output; max. ratio is +/-
        MDC= PTPER>>1;       //0.5 duty cycle
    else
    {
-     if(permilleratio < 0)
-     {
-      permilleratio = -permilleratio;
-      ec.Required_Direction= CCW;
-     }
-     else
-      ec.Required_Direction= CW;
+       if((permilleratio < 0)== ec.Left)
+           ec.Required_Direction= CW;
+       else
+           ec.Required_Direction= CCW;
      if(permilleratio > 1000)permilleratio = 1000;
+     else if(permilleratio < -1000)permilleratio = -1000;
      lotr= ((uint32_t)(permilleratio + 0x400)) * PTPER;//t
      MDC= lotr >> 11; 
    }
 }
 
-bool ramp(int16_t *ptvelo, int16_t endvelo,int16_t updown)//on slopes(pointer to actual value, final value, absolute slope)
+int16_t ramp(int16_t velo, int16_t endvelo,int16_t updown)//on slopes(actual value, final value, absolute slope) return new value velo
 {
-    bool G= true;
-    if(updown<0)updown= -updown;
-    if((endvelo> *ptvelo))
+    if(updown<0)
+        updown= -updown;
+    if(endvelo> velo)
     {        
-      *ptvelo += updown;
-      if(*ptvelo > endvelo)
-          *ptvelo= endvelo;
+      velo += updown;
+      if(velo > endvelo)
+          velo= endvelo;
     }
-    else if((endvelo < *ptvelo))
+    else if((endvelo < velo))
     {
-          *ptvelo -= updown;
-         if(*ptvelo < endvelo)
-            *ptvelo= endvelo;
+          velo -= updown;
+         if(velo < endvelo)
+            velo= endvelo;
     }
-    else G= false;
-    return G;
-
+    return velo;
 }
 
