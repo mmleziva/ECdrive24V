@@ -8,7 +8,7 @@ BRAKE: BLDC motor drive of 12kN brake.
 &emsp;  Modbus.c: Some basic modbus protocol functions.  
 &emsp;  Crc.c: Generate modbus control word.  
  &emsp; Sericom.c : Uart for modbus.    
-SIGNAL BRAKE: firmware of optional signalizing card  
+SIGNAL BRAKE: firmware of optional signalizing card, communicates by modbus.   
 BOOTLOAD: Optional uart bootloader  
 WINBRAKE: Windows monitor program, communicates by modbus.  
 &emsp;More at https://emar.cz
